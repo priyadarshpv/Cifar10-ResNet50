@@ -1,124 +1,200 @@
-# Image Classification Using ResNet50
+# CIFAR-10 Image Classification with ResNet50
 
-## Overview
-This project implements an image classification model using **ResNet50**, a popular pre-trained Convolutional Neural Network (CNN) architecture. The model is trained to classify images into 10 classes using a custom dataset. The project incorporates advanced techniques such as transfer learning, data preprocessing, and fine-tuning to achieve high accuracy and robust performance.
-
-## Key Features
-- Utilizes the **ResNet50** pre-trained model for feature extraction.
-- Incorporates data augmentation for improved generalization.
-- Implements transfer learning by freezing early layers of ResNet50.
-- Includes dropout layers and batch normalization for regularization.
-- Trains and evaluates the model with metrics such as accuracy and loss.
+## Project Overview
+This project focuses on building an image classification model for the CIFAR-10 dataset using a ResNet50 architecture. The CIFAR-10 dataset consists of 60,000 32x32 RGB images across 10 classes. The model employs TensorFlow and Keras for training and evaluation and utilizes transfer learning via ResNet50 for better performance on the classification task.
 
 ---
 
-## Dataset
-The dataset contains images classified into 10 categories. Each image is an RGB image with dimensions `(256, 256, 3)`.
-
-### Dataset Preprocessing:
-1. Resized all images to `(256, 256, 3)`.
-2. Normalized pixel values to the range `[0, 1]`.
-3. Applied data augmentation techniques, such as rotation, flipping, and zoom.
+## Dataset Details
+- **Dataset Source:** [Kaggle CIFAR-10 competition](https://www.kaggle.com/c/cifar-10)
+- **Number of Classes:** 10 (airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck)
+- **Number of Images:**
+  - Training Set: 50,000 images
+  - Test Set: 10,000 images
 
 ---
 
-## Model Architecture
-The model consists of the following components:
-1. **ResNet50** (Pre-trained): Used as a feature extractor.
-2. **Fully Connected Layers**: Added dense layers with:
-   - Batch Normalization
-   - Dropout (0.5 for regularization)
-3. **Output Layer**: A dense layer with 10 units and a `softmax` activation function.
+## Project Workflow
 
-### Model Summary
-- **Input Shape**: `(256, 256, 3)`
-- **Base Model**: ResNet50 with frozen convolutional layers.
-- **Custom Layers**:
-  - Dense layers with ReLU activation
-  - Dropout for regularization
-  - Batch Normalization
-- **Output Layer**: Dense layer with 10 neurons (softmax activation).
+### 1. Dataset Preparation
+1. **Download CIFAR-10 dataset:**
+   ```bash
+   !pip install kaggle
+   !mkdir -p ~/.config/kaggle
+   !mv /content/kaggle.json ~/.config/kaggle/
+   !chmod 600 ~/.config/kaggle/kaggle.json
+   !kaggle competitions download -c cifar-10
+   !unzip /content/cifar-10.zip
+   ```
 
-### Optimizer and Loss Function
-- **Optimizer**: RMSprop with a learning rate of `2e-5`
-- **Loss Function**: Sparse Categorical Crossentropy
-- **Metrics**: Accuracy
+2. **Extract Training Images:**
+   ```python
+   import py7zr
+
+   archive = py7zr.SevenZipFile('/content/train.7z', mode='r')
+   archive.extractall()
+   archive.close()
+   ```
+
+3. **Label Processing:**
+   - Convert class names to numerical labels for compatibility with the neural network.
+
+4. **Image Processing:**
+   - Convert images to numpy arrays.
+   - Normalize pixel values by scaling them between 0 and 1.
+
+### 2. Model Building
+
+#### Baseline Neural Network
+A simple feedforward neural network for baseline evaluation:
+```python
+model = keras.Sequential([
+    keras.layers.Flatten(input_shape=(32, 32, 3)),
+    keras.layers.Dense(64, activation='relu'),
+    keras.layers.Dense(128, activation='relu'),
+    keras.layers.Dense(num_of_classes, activation='softmax')
+])
+```
+
+#### ResNet50 Transfer Learning
+Using ResNet50 pre-trained on ImageNet:
+1. Load ResNet50 as the convolutional base (without the top layer):
+   ```python
+   convolutional_base = ResNet50(weights='imagenet', include_top=False, input_shape=(256, 256, 3))
+   ```
+2. Add custom dense layers for classification:
+   ```python
+   model = models.Sequential([
+       layers.UpSampling2D((2, 2)),
+       layers.UpSampling2D((2, 2)),
+       layers.UpSampling2D((2, 2)),
+       convolutional_base,
+       layers.Flatten(),
+       layers.BatchNormalization(),
+       layers.Dense(256, activation='relu'),
+       layers.Dropout(0.5),
+       layers.BatchNormalization(),
+       layers.Dense(128, activation='relu'),
+       layers.Dropout(0.5),
+       layers.BatchNormalization(),
+       layers.Dense(num_of_classes, activation='softmax')
+   ])
+   ```
+
+3. Compile and Train:
+   ```python
+   model.compile(optimizer=optimizers.RMSprop(learning_rate=1e-5),
+                 loss='sparse_categorical_crossentropy',
+                 metrics=['acc'])
+
+   history = model.fit(x_train, y_train, validation_split=0.1, epochs=10)
+   ```
+
+### 3. Evaluation
+- Evaluate the model on the test set:
+  ```python
+  model.evaluate(x_test, y_test)
+  ```
+
+- Generate classification report and confusion matrix:
+  ```python
+  from sklearn.metrics import confusion_matrix, classification_report
+
+  y_pred = model.predict(x_test)
+  y_pred_classes = np.argmax(y_pred, axis=1)
+
+  print(confusion_matrix(y_test, y_pred_classes))
+  print(classification_report(y_test, y_pred_classes))
+  ```
+
+### 4. Save and Load Model
+Save the trained model for future use:
+```python
+model.save("cifar10_resnet50_model.h5")
+model = load_model("cifar10_resnet50_model.h5")
+```
 
 ---
 
 ## Results
-| Epoch | Training Accuracy | Validation Accuracy | Validation Loss |
-|-------|--------------------|----------------------|-----------------|
-| 1     | 31.04%            | 69.73%              | 0.9832          |
-| 2     | 65.78%            | 84.47%              | 0.5293          |
-| 3     | 77.65%            | 88.60%              | 0.3986          |
-| 4     | 84.57%            | 90.38%              | 0.3291          |
-| 5     | 88.89%            | 90.93%              | 0.3037          |
-| 10    | 97.84%            | 92.73%              | 0.2443          |
+### Model Performance:
+| Metric         | Value        |
+|----------------|--------------|
+| **Accuracy**   | ~93%         |
+| **F1-Score**   | 0.93         |
 
-### Classification Report
-- **Overall Accuracy**: 93%
-- **Precision, Recall, and F1-Score**:
-  - Best-performing classes: `1`, `9`
-  - Underperforming classes: `3`, `5`
+### Confusion Matrix:
+A heatmap visualization was generated to show the performance across all classes.
 
 ---
 
-## How to Run the Project
+## Visualizations
+1. **Training and Validation Loss:**
+   - Shows the reduction in loss over epochs.
+2. **Training and Validation Accuracy:**
+   - Demonstrates the improvement in accuracy over epochs.
 
-### Prerequisites
+---
+
+## Installation and Requirements
+### Prerequisites:
 - Python 3.8+
-- TensorFlow 2.x
-- NumPy
-- Matplotlib
-- Scikit-learn
+- Install dependencies:
+  ```bash
+  pip install -r requirements.txt
+  ```
 
-### Steps
-1. Clone the repository:
-   ```bash
-   git clone <repository-link>
-   cd <repository-folder>
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Prepare the dataset:
-   - Place your dataset in the `data/` folder.
-   - Ensure images are organized into subfolders corresponding to class labels.
-
-4. Train the model:
-   ```bash
-   python train.py
-   ```
-
-5. Evaluate the model:
-   ```bash
-   python evaluate.py
-   ```
+### `requirements.txt`
+```plaintext
+tensorflow==2.11.0
+numpy==1.23.5
+pandas==1.5.2
+matplotlib==3.7.1
+seaborn==0.12.2
+h5py==3.8.0
+scikit-learn==1.2.0
+Pillow==9.5.0
+py7zr==0.20.4
+```
 
 ---
 
-## Improvements and Future Work
-1. **Augmentation**: Enhance the dataset using more augmentation techniques.
-2. **Model Optimization**: Use advanced optimizers like AdamW or SGD with momentum.
-3. **Ensemble Learning**: Combine predictions from multiple models.
-4. **Hyperparameter Tuning**: Experiment with different dropout rates, learning rates, and batch sizes.
-5. **Class Imbalance Handling**: Use class weighting or oversampling to improve performance on underperforming classes.
+## How to Run
+1. Clone the repository.
+2. Add your Kaggle API key (`kaggle.json`) to the working directory.
+3. Download the dataset using Kaggle CLI.
+4. Preprocess the data and run the ResNet50 model training script.
+5. Evaluate the model and visualize the results.
+
+---
+
+## Project Structure
+```
+project/
+|-- train/                # Contains training images
+|-- trainLabels.csv       # Contains image labels
+|-- cifar10_resnet50_model.h5   # Saved model
+|-- main.py               # Script to preprocess, train, and evaluate
+|-- requirements.txt      # Dependencies
+|-- README.md             # Project documentation
+```
+
+---
+
+## Future Work
+1. **Data Augmentation:** To further improve model generalization.
+2. **Hyperparameter Tuning:** Experiment with learning rates, optimizers, and dropout rates.
+3. **Advanced Architectures:** Test models like EfficientNet or Vision Transformers.
+
+---
+
+## Acknowledgments
+- **Kaggle:** For providing the CIFAR-10 dataset.
+- **TensorFlow/Keras:** For model building and training.
 
 ---
 
 ## License
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
+This project is licensed under the MIT License.
 
-## Contact
-For any queries, reach out to:
-- **Name**: Priyadarsh
-- **Email**: [priyadarshdinesh@gmail.com]
-
----
-
-Happy Coding!
 
